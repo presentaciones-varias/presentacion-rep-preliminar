@@ -1,0 +1,1550 @@
+---
+# title: "Mesa de Procesamiento REP"
+# author: "Febrero 2024"
+format:
+  revealjs:
+    auto-stretch: false
+    margin: 0
+    slide-number: true
+    scrollable: true
+    preview-links: auto
+    logo: imagenes/logo_portada2.png
+    css: ine_quarto_styles.css
+    # footer: <https://quarto.org>
+---
+
+```{r librerias}
+#| echo: FALSE
+#| output: FALSE
+#| eval: TRUE
+library(dplyr)
+library(targets)
+library(kableExtra)
+library(arrow)
+library(janitor)
+library(stringr)
+library(ggplot2)
+
+arrow::set_cpu_count(2)
+options(arrow.use_threads = TRUE)
+memory.size(10000000)
+```
+
+```{r bases}
+#| label: load
+#| message: false
+rc <- targets::tar_read(registro_civil)
+rc <- arrow::read_feather(rc, as_data_frame = FALSE)
+
+rc_muertos <- targets::tar_read(registro_civil_dead)
+rc_muertos <- arrow::read_feather(rc_muertos, as_data_frame = FALSE)
+
+```
+#
+
+<!---
+# TODO: this does not work
+.linea-superior[]
+.linea-inferior[] 
+--->
+
+<!---
+# TODO: this does not work
+![](imagenes/logo_portada2.png){.center style="width: 20%;"}   
+--->
+
+[]{.linea-superior} 
+[]{.linea-inferior} 
+
+<!---
+<img src="imagenes/logo_portada2.png" style="width: 20%"/>  
+--->
+
+<img src="imagenes/logo_portada2.png" width="20%"/>  
+
+[**Mesa de Procesamiento**]{.big-par .center-justified}
+
+[**Proyecto Estratégico Registro Estadístico de Población (REP)**]{.big-par .center-justified}
+
+[**Resultados Preliminares**]{.big-par .center-justified}
+
+[**Febrero 2024**]{.big-par .center-justified}
+
+## Introducción 
+
+<!---
+## PE Servicios Compartidos  
+--->
+
+. . .
+
+#### Objetivo del REP:
+
+[*"Compilar datos de la población permitiendo su conteo, localización y caracterización demográfica básica. Este permitirá brindar acceso a datos poblacionales desagregados, oportunos y de calidad, derivando en la disminución de costos asociados al levantamiento de datos. Además, la instalación del REP permitirá reducir las cargas en entrevistadores e informantes, entre otros beneficios.".*]{.medium-par}
+
+## Introducción  
+
+<!---
+## PE Servicios Compartidos  
+--->
+
+#### Temas: 
+
+::: {.incremental .medium-par}
+
+- Caracterización de los resultados brutos de los registros administrativos del Servicio de Registro Civil e Identificación (SRCeI), Fondo Nacional de Salud (FONASA) y la Superintendencia de Seguridad Social (SUSESO).
+
+- Analizar indicadores de calidad.
+
+- Describir el flujo del pre-procesamiento de las bases. 
+
+- Mostrar los resultados **preliminares** post-procesamiento e integración de bases. 
+
+- Consideraciones finales
+
+:::
+
+::: notes
+
+- Recalcar que son resultados preliminares y que aún queda tomar decisiones e integrar más bases
+
+::: 
+
+
+<!---
+![](imagenes/overview-mode.png){.border} 
+--->
+
+<!---
+::: {.r-fit-text}
+Big Text
+::: 
+--->
+
+## Frecuencias Brutas SRCeI
+
+::: {.incremental .medium-par}
+
+- Se considera como la fuente de información punto de partida por excelencia
+
+- Base amplia de información que incluye datos de identificación, caracterización demográfica (sexo, fecha de nacimiento, fecha de defunción, fecha de matrimonio, entre otros) y localización.
+
+- Información de las personas vivas y fallecidas reportadas
+
+:::
+
+::: notes
+
+- En un principio tenemos una base 26,5 millones de registros la cual dividimos en personas vivas y personas fallecidas.
+- Personas vivas son aquellas con fecha de defunción igual a cero, en caso contrario se consideran fallecidos → de ahora en adelante se trabajará con la base de los “vivos” la cual consta de 22 millones, sin embargo, más adelante veremos que existen outliers en la variable de edad lo que da la posibilidad de que existan personas fallecidas en la base.
+
+:::
+
+::: {.incremental .medium-par}
+
+```{r tabla-1}
+#| echo: FALSE
+#| eval: TRUE
+
+Vivos <- nrow(rc)
+Fallecidos <- nrow(rc_muertos)
+Total <- Vivos+Fallecidos
+
+rm(rc_muertos)
+
+```
+```{r}
+#| warning: FALSE
+
+tabla1 <- rbind(Vivos, Fallecidos, Total) %>% 
+  as.data.frame() %>% 
+  rename(Frecuencia = V1) %>% 
+  mutate(Frecuencia = as.numeric(Frecuencia),
+         'Porcentaje (%)' = round(Frecuencia/Total*100,1),
+         Frecuencia = formatC(Frecuencia, format = "f", big.mark = ".", decimal.mark = ".", digits = 0)) %>% 
+  kbl()
+
+tabla1
+
+```
+
+:::
+
+## Frecuencias Brutas SRCeI
+
+. . .
+
+- Según sexo
+
+. . .
+
+::: notes
+
+ - Se puede observar que el % de hombres es levemente superior al de mujeres → 50,6% vs 49,4% → también existen pocos casos “sin información” lo cual es bueno
+ 
+:::
+
+::: {.incremental .medium-par}
+
+```{r tabla-2}
+#| warning: FALSE
+
+tabla2 <- rc %>% 
+  group_by(SX_ACTUAL) %>% 
+  summarise(n = n()) %>% 
+  collect() %>%
+  mutate(Porcentaje = round(n/sum(n)*100,1)) %>% 
+  adorn_totals("row") %>% 
+  mutate(n = formatC(n, format = "f", big.mark = ".", decimal.mark = ".", digits = 0)) %>% 
+  rename(Sexo = SX_ACTUAL,
+         Frecuencia = n,
+         'Porcentaje (%)' = Porcentaje) %>% 
+  mutate(Sexo = case_when(Sexo=="M" ~ "Masculino",
+                          Sexo=="F" ~ "Femenino",
+                          Sexo=="I" ~ "Indeterminado",
+                          Sexo=="X" ~ "No binario",
+                          Sexo=="U" ~ "Sin información",
+                          Sexo=="Total" ~ "Total")) %>% 
+  kbl()
+
+tabla2
+
+```
+::: 
+
+## Frecuencias Brutas SRCeI
+
+. . .
+
+- Según nacionalidad
+
+. . .
+
+::: notes
+
+- Aproximadamente el 90% de la población es chilena y alrededor del 10% son extranjeros
+
+:::
+
+::: {.incremental .medium-par}
+
+```{r tabla-3}
+#| warning: FALSE
+
+tabla3 <- rc %>% 
+  group_by(NACIONALIDAD) %>% 
+  summarise(n = n()) %>% 
+  collect() %>%
+  mutate(Porcentaje = round(n/sum(n)*100,1)) %>% 
+  adorn_totals("row") %>% 
+  mutate(n = formatC(n, format = "f", big.mark = ".", decimal.mark = ".", digits = 0)) %>% 
+  rename(Nacionalidad = NACIONALIDAD,
+         Frecuencia = n,
+         'Porcentaje (%)' = Porcentaje) %>% 
+  mutate(Nacionalidad = case_when(Nacionalidad=="C" ~ "Chileno",
+                                  Nacionalidad=="E" ~ "Extranjero",
+                                  Nacionalidad=="N" ~ "Nacionalizado",
+                                  Nacionalidad=="U" ~ "Sin información",
+                                  Nacionalidad=="Total" ~ "Total")) %>% 
+  kbl()
+
+tabla3
+
+```
+:::
+
+## Frecuencias Brutas SRCeI
+
+. . .
+
+- Según edad
+
+. . .
+
+::: notes
+
+- La edad es una variable construida por nosotros a partir de la diferencia entre la fecha de nacimiento y una fecha de referencia, cercana al momento en el que fue generada la base datos → en este caso el 10 de julio de 2023
+- Podemos ver que el tramo etario de 30 a 39 años tiene la mayor representación en la base y el porcenajte disminuye a medida que nos acercamos a tramos superiores
+- Cabe señalar que existe un bajo porcentaje de datos sin información, sin embargo, se observan outliers o datos atípicos de edades sobre 110 años
+
+:::
+
+::: {.incremental .small-par}
+
+```{r tabla-4}
+#| warning: FALSE
+
+tabla4 <- rc %>%
+  mutate(anio_nacimiento = as.numeric(str_sub(FECHA_NAC, 1, 4)),
+         edad = if_else(!anio_nacimiento %in% c("0", ""), 2023 - as.numeric(anio_nacimiento), 99999),
+         edad_agrupada = case_when(edad %in% 0:9 ~ "0 a 9",
+                                   edad %in% 10:19 ~ "10 a 19",
+                                   edad %in% 20:29 ~ "20 a 29",
+                                   edad %in% 30:39 ~ "30 a 39",
+                                   edad %in% 40:49 ~ "40 a 49",
+                                   edad %in% 50:59 ~ "50 a 59",
+                                   edad %in% 60:69 ~ "60 a 69",
+                                   edad %in% 70:79 ~ "70 a 79",
+                                   edad %in% 80:89 ~ "80 a 89",
+                                   edad %in% 90:99 ~ "90 a 99",
+                                   edad %in% 100:110 ~ "100 a 110",
+                                   edad == 99999 ~ "Sin información",
+                                   TRUE ~ ">110"),
+         edad_num = case_when(edad %in% 0:9 ~ 1,
+                              edad %in% 10:19 ~ 2,
+                              edad %in% 20:29 ~ 3,
+                              edad %in% 30:39 ~ 4,
+                              edad %in% 40:49 ~ 5,
+                              edad %in% 50:59 ~ 6,
+                              edad %in% 60:69 ~ 7,
+                              edad %in% 70:79 ~ 8,
+                              edad %in% 80:89 ~ 9,
+                              edad %in% 90:99 ~ 10,
+                              edad %in% 100:110 ~ 11,
+                              edad == 99999 ~ 12,
+                              TRUE ~ 13)) %>%
+  group_by(edad_agrupada, edad_num) %>%
+  summarise(n = n()) %>%
+  collect() %>% 
+  ungroup() %>% 
+  mutate(Porcentaje = round(n/sum(n)*100,1)) %>% 
+  adorn_totals("row") %>% 
+  mutate(Frecuencia = formatC(n, format = "f", big.mark = ".", decimal.mark = ".", digits = 0)) %>% 
+  arrange(edad_num) %>% 
+  select(-edad_num) %>% 
+  rename(Edad = edad_agrupada,
+         'Porcentaje (%)' = Porcentaje) %>% 
+  select(Edad, Frecuencia, 'Porcentaje (%)') %>% 
+  kbl()
+
+tabla4
+
+```
+:::
+
+## Indicadores de calidad SRCeI
+
+. . .
+
+::: {.incremental .medium-par}
+
+- **Tasa de completitud**: proporción entre el número de celdas con datos y el número total de celdas requeridas para una variable específica en las bases de los registros administrativos seleccionados. 
+
+:::
+
+. . .
+
+::: notes
+
+- La tasa de completitud para el run, el nombre y el sexo es del 100%, sin embargo, las variables de información geográfica como la calle, comuna o lugar de nacimiento muestran porcentajes  más altos de información faltante. 
+- Es una buena señal que la completitud de la variable RUN sea alta pero todavía falta validar que estos sean válidos. 
+
+:::
+
+::: {.incremental .small-par}
+
+```{r tabla-5}
+#| warning: FALSE
+rm(rc)
+rc <- targets::tar_read(rc_arrow)
+rc <- arrow::read_feather(rc, as_data_frame = FALSE)
+
+vacio_run <- rc %>% 
+  filter(is.na(run_dv) | run_dv <= 0) %>% 
+  count() %>% 
+  collect()
+
+vacio_run <- unlist(vacio_run)
+
+# nombres 
+vacio_nombre <- rc %>% 
+  filter(nombres %in% c("", " ", "  ")) %>% 
+  count() %>% 
+  collect()
+
+vacio_nombre <- unlist(vacio_nombre)
+
+# sexo actual
+vacio_sexo <- rc %>% 
+  group_by(sx_actual) %>% 
+  summarise(count = n()) %>% 
+  filter(sx_actual=="U") %>% 
+  summarise(vacios = sum(count)) %>% 
+  collect()
+
+vacio_sexo <- unlist(vacio_sexo)
+
+# Sexo anterior
+vacio_sexo_anterior <- rc %>% 
+  group_by(sx_ant) %>% 
+  summarise(count = n()) %>% 
+  filter(sx_ant =="U" | nchar(sx_ant)==0 | sx_ant==" ") %>% 
+  summarise(vacios = sum(count)) %>% 
+  collect()
+
+vacio_sexo_anterior <- unlist(vacio_sexo_anterior)
+
+# Nacionalidad
+vacio_nacionalidad <- rc %>% 
+  group_by(nacionalidad) %>% 
+  summarise(count = n()) %>% 
+  filter(nacionalidad %in% c("", " ", "-", "U")) %>% 
+  summarise(vacios = sum(count)) %>% 
+  collect()
+
+vacio_nacionalidad <- unlist(vacio_nacionalidad)
+
+
+# País de origen
+vacio_pais_origen <- rc %>% 
+  filter(nacionalidad != "C" &  (pais_origen == " " | pais_origen == "" | pais_origen == "  " )) %>% 
+  count() %>% 
+  collect()
+
+vacio_pais_origen <- unlist(vacio_pais_origen)
+
+# Lugar de nacimiento
+vacio_lugar_nacimiento <- rc %>% 
+  filter(lugar_nacimiento == "" | lugar_nacimiento == " ") %>% 
+  count() %>% 
+  collect()
+
+vacio_lugar_nacimiento <- unlist(vacio_lugar_nacimiento)
+
+
+# Fecha nacimiento
+vacio_fecha_nac <- rc %>% 
+  filter(is.na(fecha_nac) | fecha_nac <= 0) %>% 
+  count() %>% 
+  collect()
+
+vacio_fecha_nac <- unlist(vacio_fecha_nac)
+
+
+# Fecha defunción
+vacio_fecha_defuncion <- rc %>% 
+  filter(is.na(fecha_defuncion) | fecha_defuncion < 0) %>% 
+  count() %>% 
+  collect()
+
+vacio_fecha_defuncion <- unlist(vacio_fecha_defuncion)
+
+
+# Calle
+vacio_calle <- rc %>% 
+  filter(calle == "") %>% 
+  count() %>% 
+  collect()
+
+vacio_calle <- unlist(vacio_calle)
+
+
+# comuna
+vacio_comuna <- rc %>% 
+  filter(comuna == "") %>% 
+  count() %>% 
+  collect()
+
+vacio_comuna <- unlist(vacio_comuna)
+
+tabla_completitud <- data.frame(Variable = c("run", "nombre", "sexo", "sexo_ant", "nacionalidad",
+                                             "pais_origen", "lugar_nacimiento", "fecha_nacimiento",
+                                             "fecha_defuncion", "calle", "comuna"),
+                                Frecuencia = c(vacio_run, vacio_nombre, vacio_sexo, vacio_sexo_anterior,
+                                               vacio_nacionalidad, vacio_pais_origen, vacio_lugar_nacimiento,
+                                               vacio_fecha_nac, vacio_fecha_defuncion, vacio_calle,
+                                               vacio_comuna
+                                )) %>% 
+  mutate(Frecuencia = ifelse(is.na(Frecuencia), 0, Frecuencia),
+         Porcentaje = Frecuencia / nrow(rc) * 100,
+         Porcentaje = ifelse(is.na(Porcentaje), 0, Porcentaje),
+         'Tasa de completitud (%)' = round(100-Porcentaje, 1 ),
+         Porcentaje = round(Porcentaje, 1),
+         Frecuencia = formatC(Frecuencia, format = "f", big.mark = ".", decimal.mark = ".", digits = 0)) %>% 
+  kbl()
+
+tabla_completitud
+
+```
+:::
+
+## Indicadores de calidad SRCeI
+
+. . .
+
+::: {.incremental .medium-par}
+
+- **Tasa de valores atípicos**: se define como el porcentaje de datos atípicos sobre el total de datos.
+
+:::
+
+. . .
+
+::: notes
+
+- En este caso se ha evaluado la única variable continua que es la edad
+- La tabla muestra que la edad mínima es de 0 años, la edad máxima es de 236 años y la mediana de 40, adicionalmente el boxplot muestra que los outliers tienen una concentración alta.
+
+:::
+
+::: {.incremental .medium-par layout-ncol=2 layout-valign="center"}
+
+![](imagenes/boxplot_edad_raw.png)
+
+
+
+```{r tabla-6}
+#| warning: FALSE
+
+# Crear fecha de nacimiento
+data <- rc %>% mutate(anio_nacimiento = substring(as.character(fecha_nac), 1, 4)) %>%
+  compute()
+
+# Edad
+data <- data %>%
+  mutate(edad = if_else(!anio_nacimiento %in% c("0", ""), 2023 - as.numeric(anio_nacimiento), 99999)) %>% 
+  filter(edad != 99999) %>% 
+  collect()
+
+# Obtener resumen 
+tabla6<-data %>% 
+  select(edad) %>%
+  summary(edad) %>% 
+  as.data.frame() %>% 
+  select(Freq) %>% 
+  rename('Estadísticas descriptivas de edad'=Freq) %>% 
+  kbl()
+
+tabla6
+
+```
+
+:::
+
+## Indicadores de calidad SRCeI
+
+::: {.incremental .medium-par}
+
+- **Proporción de registros duplicados**: La proporción de registros duplicados (PRD) es un indicador que revela la cantidad de unidades duplicadas en un conjunto de datos, proporcionando información valiosa sobre su calidad.  
+
+- Existen **611** registros con RUN duplicado, lo cual equivale aproximadamente al 0.003% del total. 
+- Este bajo porcentaje permite observar que la duplicidad según RUN no constituye un problema relevante en la base de datos del Registro Civil. 
+- En la mayoría de los casos, la duplicidad se genera debido a entregas sucesivas de parte del proveedor de datos en las que, en lugar de actualizar la información ya existente, se generaron filas nuevas.  
+
+:::
+
+::: notes
+
+- Para evaluar la duplicidad de registros en esta primera instancia se utiliza solamente el run de las personas, en este sentido si dos o más personas comparten el mismo run entonces el registro se considera como duplicado.
+- En el RC se encontraron 611 registros duplicados lo cual equivale a una tasa muy baja cercana al 0% 
+
+:::
+
+## Indicadores de calidad SRCeI
+
+::: {.incremental .medium-par}
+
+- **Validación de RUN**: Una variable de gran importancia para la construcción del REP es el RUN, ya que a partir de este se establecen las conexiones con los demás registros. Para evaluar, la calidad del RUN se debe determinar: 
+
+  - Si el dígito verificador corresponde al RUN informado 
+  
+  - Que el largo del mismo esté dentro de cierto rango. 
+
+:::
+
+::: notes
+
+- Para evaluar los runes se verifica primero que el dígito verificador sea el que corresponde y que el largo este entre 9 y 10 caracteres incluyendo el guion
+- Podemos observar que cerca del 2% de la población tiene un run inválido → este subconjunto será eliminado de la base de datos en el procesamiento por el momento dado que el conteo determinístico va a estar basado en runes 
+
+:::
+
+. . .
+
+::: {.incremental .medium-par}
+
+```{r tabla-7}
+#| warning: FALSE
+
+rm(rc)
+rc <- tar_read(validar_run_rc)
+rc <- read_feather(rc, as_data_frame = FALSE)
+
+tabla7 <- rc %>% 
+  select(validacion_rut) %>% 
+  group_by(validacion_rut) %>% 
+  summarise(n = n()) %>% 
+  collect() %>% 
+  mutate(Porcentaje = round(n/sum(n)*100,1)) %>% 
+  rename(Frecuencia = n,
+         Validez = validacion_rut) %>% 
+  adorn_totals() %>% 
+  mutate(Frecuencia = formatC(Frecuencia, format = "f", big.mark = ".", decimal.mark = ".", digits = 0),
+         Validez = case_when(Validez == TRUE ~ "Válido",
+                             Validez == FALSE ~ "Inválido",
+                             Validez == "Total" ~ "Total")) %>% 
+  kbl()
+
+tabla7
+```
+
+:::
+
+## Frecuencias Brutas FONASA
+
+::: {.incremental .medium-par}
+
+- El registro de FONASA es particularmente relevante para el proyecto REP dado que al contener información sobre los beneficiarios de la salud pública, abarca un universo de más de 15 millones de personas por mes. 
+
+- Este registro no solo incluye personas con un RUN otorgado por el SRCeI, sino que puede contener personas a quienes aún no se les haya otorgado este identificador. 
+
+- En esos casos, el identificador será un “RUT provisorio” provisto por FONASA que solo servirá para la habilitación de la persona para recibir prestaciones de salud. 
+
+:::
+
+::: notes
+
+- FONASA abarca un universo bastante amplio con más de 15 millones de registros por mes conteniendo información sobre los beneficiaros de la salud pública por lo que se considera una fuente de información relevante para el proyecto 
+- La base también contiene a personas que no se les ha asignado un RUN por el registro civil y por ende tienen un RUN provisorio, en este sentido podemos rescatar a personas que no existen en el RC 
+
+:::
+
+## Frecuencias Brutas FONASA
+
+. . .
+
+- Según sexo
+
+. . .
+
+::: notes
+
+- Tenemos un total de 17.5 millones de registros en FONASA → a diferencia del RC observamos que hay levemente más mujeres que hombres con porcentajes de 51,8% vs 48,2% 
+
+:::
+
+::: {.incremental .medium-par}
+
+```{r tabla-8}
+#| warning: FALSE
+rm(rc)
+fonasa <- tar_read(fonasa)
+fonasa <- read_feather(fonasa)
+
+# Sexo
+tabla8 <- fonasa %>%
+  group_by(SEXO_COR) %>%
+  summarise(contar = n()) %>%
+  collect() %>% 
+  mutate(sexo_num = case_when(SEXO_COR == "HOMBRE" ~ 1,
+                              SEXO_COR == "MUJER" ~ 2,
+                              SEXO_COR == "INDETERMINADO" ~ 3),
+         Porcentaje = round(contar/sum(contar)*100, 1)) %>% 
+  arrange(sexo_num) %>% 
+  select(-sexo_num) %>% 
+  rename(Sexo = SEXO_COR,
+         Frecuencia = contar) %>% 
+  mutate(Sexo = case_when(Sexo == "HOMBRE" ~ "Hombres",
+                          Sexo == "MUJER" ~ "Mujeres",
+                          Sexo == "INDETERMINADO" ~ "Indeterminado")) %>% 
+  adorn_totals() %>% 
+  mutate(
+    Frecuencia = formatC(Frecuencia, format = "f", big.mark = ".", decimal.mark = ".", digits = 0)) %>% 
+  kbl()
+
+tabla8
+
+```
+:::
+
+## Frecuencias Brutas FONASA
+
+. . .
+
+- Según nacionalidad
+
+. . .
+
+::: notes
+
+- el 89,7% del universo corresponde a chilenos y un 10,3% a extranjeros
+
+:::
+
+::: {.incremental .medium-par}
+
+```{r tabla-9}
+#| warning: FALSE
+rm(rc)
+fonasa <- tar_read(fonasa)
+fonasa <- read_feather(fonasa)
+
+# Nacionalidad
+tabla9 <- fonasa %>%
+  group_by(NACIONALIDAD_COR) %>%
+  summarise(contar = n()) %>%
+  collect() %>% 
+  mutate(nacionalidad_num = case_when(NACIONALIDAD_COR == "CHILENA" ~ 1,
+                                      NACIONALIDAD_COR == "EXTRANJERA" ~ 2),
+         Porcentaje = round(contar/sum(contar)*100, 1)) %>% 
+  arrange(nacionalidad_num) %>% 
+  select(-nacionalidad_num) %>% 
+  rename(Nacionalidad = NACIONALIDAD_COR,
+         Frecuencia = contar) %>% 
+  mutate(Nacionalidad = case_when(Nacionalidad == "CHILENA" ~ "Chileno",
+                                  Nacionalidad == "EXTRANJERA" ~ "Extranjero")) %>% 
+  adorn_totals() %>% 
+  mutate(
+    Frecuencia = formatC(Frecuencia, format = "f", big.mark = ".", decimal.mark = ".", digits = 0)) %>% 
+  kbl()
+
+tabla9
+
+```
+
+:::
+
+## Frecuencias Brutas FONASA
+
+. . .
+
+- Según edad
+
+. . .
+
+::: notes
+
+- en FONASA existe un variable edad pero también calculamos una nueva usando el mismo método que en el RC usando la fecha nacimiento, por ende, tenemos dos variables de edad →
+- En la tabla de la izquiera se muestra la distribución de la edad construida y en la derecha la de que viene en la base de FONASA.
+- Se puede ver que la edad de FONASA no tiene outliers en tanto la edad corregida tiene un 0,1% de valores mayores a 110 años 
+- Dado que FONASA tuvo un procesamiento previo le creeremos a la edad de FONASA 
+
+:::
+
+::: {.incremental .small-par layout="[[1,1], [1,1]]" layout-valign="center"}
+
+```{r tabla-10}
+#| warning: FALSE
+
+tabla10 <- fonasa %>%
+  mutate(anio_nacimiento = as.numeric(str_sub(FECHA_NACIMIENTO, 1, 4)),
+         edad = if_else(!anio_nacimiento %in% c("0", ""), 2023 - as.numeric(anio_nacimiento), 99999),
+         edad_agrupada = case_when(edad %in% 0:9 ~ "0 a 9",
+                                   edad %in% 10:19 ~ "10 a 19",
+                                   edad %in% 20:29 ~ "20 a 29",
+                                   edad %in% 30:39 ~ "30 a 39",
+                                   edad %in% 40:49 ~ "40 a 49",
+                                   edad %in% 50:59 ~ "50 a 59",
+                                   edad %in% 60:69 ~ "60 a 69",
+                                   edad %in% 70:79 ~ "70 a 79",
+                                   edad %in% 80:89 ~ "80 a 89",
+                                   edad %in% 90:99 ~ "90 a 99",
+                                   edad %in% 100:110 ~ "100 a 110",
+                                   edad == 99999 ~ "Sin información",
+                                   TRUE ~ ">110"),
+         edad_num = case_when(edad %in% 0:9 ~ 1,
+                              edad %in% 10:19 ~ 2,
+                              edad %in% 20:29 ~ 3,
+                              edad %in% 30:39 ~ 4,
+                              edad %in% 40:49 ~ 5,
+                              edad %in% 50:59 ~ 6,
+                              edad %in% 60:69 ~ 7,
+                              edad %in% 70:79 ~ 8,
+                              edad %in% 80:89 ~ 9,
+                              edad %in% 90:99 ~ 10,
+                              edad %in% 100:110 ~ 11,
+                              edad == 99999 ~ 12,
+                              TRUE ~ 13)) %>%
+  group_by(edad_agrupada, edad_num) %>%
+  summarise(n = n()) %>%
+  collect() %>% 
+  ungroup() %>% 
+  mutate(Porcentaje = round(n/sum(n)*100,1)) %>% 
+  adorn_totals("row") %>% 
+  mutate(Frecuencia = formatC(n, format = "f", big.mark = ".", decimal.mark = ".", digits = 0)) %>% 
+  arrange(edad_num) %>% 
+  select(-edad_num) %>% 
+  rename(Edad = edad_agrupada,
+         'Porcentaje (%)' = Porcentaje) %>% 
+  select(Edad, Frecuencia, 'Porcentaje (%)') %>% 
+  kbl()
+
+tabla10
+
+```
+
+```{r tabla-10-2}
+#| warning: FALSE
+
+tabla10_2 <- fonasa %>%
+  mutate(edad_agrupada = case_when(EDAD_COR %in% 0:9 ~ "0 a 9",
+                                   EDAD_COR %in% 10:19 ~ "10 a 19",
+                                   EDAD_COR %in% 20:29 ~ "20 a 29",
+                                   EDAD_COR %in% 30:39 ~ "30 a 39",
+                                   EDAD_COR %in% 40:49 ~ "40 a 49",
+                                   EDAD_COR %in% 50:59 ~ "50 a 59",
+                                   EDAD_COR %in% 60:69 ~ "60 a 69",
+                                   EDAD_COR %in% 70:79 ~ "70 a 79",
+                                   EDAD_COR %in% 80:89 ~ "80 a 89",
+                                   EDAD_COR %in% 90:99 ~ "90 a 99",
+                                   EDAD_COR %in% 100:110 ~ "100 a 110"),
+         edad_num = case_when(EDAD_COR %in% 0:9 ~ 1,
+                              EDAD_COR %in% 10:19 ~ 2,
+                              EDAD_COR %in% 20:29 ~ 3,
+                              EDAD_COR %in% 30:39 ~ 4,
+                              EDAD_COR %in% 40:49 ~ 5,
+                              EDAD_COR %in% 50:59 ~ 6,
+                              EDAD_COR %in% 60:69 ~ 7,
+                              EDAD_COR %in% 70:79 ~ 8,
+                              EDAD_COR %in% 80:89 ~ 9,
+                              EDAD_COR %in% 90:99 ~ 10,
+                              EDAD_COR %in% 100:110 ~ 11,
+                              TRUE ~ 12)) %>%
+  group_by(edad_agrupada, edad_num) %>%
+  summarise(n = n()) %>%
+  collect() %>% 
+  ungroup() %>% 
+  mutate(Porcentaje = round(n/sum(n)*100,1)) %>% 
+  adorn_totals("row") %>% 
+  mutate(Frecuencia = formatC(n, format = "f", big.mark = ".", decimal.mark = ".", digits = 0)) %>% 
+  arrange(edad_num) %>% 
+  select(-edad_num) %>% 
+  rename(Edad_cor = edad_agrupada,
+         'Porcentaje (%)' = Porcentaje) %>% 
+  select(Edad_cor, Frecuencia, 'Porcentaje (%)') %>% 
+  kbl()
+
+tabla10_2
+
+```
+:::
+
+## Indicadores de calidad FONASA
+
+. . .
+
+- Tasa de completitud
+
+. . .
+
+::: notes
+
+- con la excepción del nombre, primer apellido y segundo apellido todas las variables tienen una tasa del 100%
+:::
+
+::: {.incremental .small-par}
+
+```{r tabla-11}
+#| warning: FALSE
+
+rm(fonasa)
+fonasa <- tar_read(fonasa_arrow)
+fonasa <- read_feather(fonasa)
+
+vacio_run <- fonasa %>% 
+  filter(is.na(run_dv) | nchar(run_dv)==0 | run_dv=="") %>% 
+  count() %>% 
+  collect()
+
+vacio_run <- unlist(vacio_run)
+
+# nombres 
+vacio_nombre <- fonasa %>% 
+  filter(nchar(nombre_beneficiario)==0 | nombre_beneficiario == "" | is.na(nombre_beneficiario) | nombre_beneficiario=="DESCONOCIDO" |
+           nombre_beneficiario==".") %>% 
+  count() %>% 
+  collect()
+
+vacio_nombre <- unlist(vacio_nombre)
+
+# apellidos 
+vacio_apellido <- fonasa %>% 
+  filter(nchar(primer_apellido_benef )==0 | primer_apellido_benef  == "" | is.na(primer_apellido_benef)| primer_apellido_benef=="DESCONOCIDO" |
+           primer_apellido_benef==".") %>% 
+  count() %>% 
+  collect()
+
+vacio_apellido <- unlist(vacio_apellido)
+
+vacio_apellido_segundo <- fonasa %>% 
+  filter(nchar(segundo_apellido_benef  )==0 | segundo_apellido_benef   == "" | is.na(segundo_apellido_benef ) | segundo_apellido_benef=="DESCONOCIDO" |
+           segundo_apellido_benef==".") %>% 
+  count() %>% 
+  collect()
+
+vacio_apellido_segundo <- unlist(vacio_apellido_segundo)
+
+
+# sexo actual
+vacio_sexo <- fonasa %>% 
+  filter(is.na(sexo_cor) | nchar(sexo_cor) == 0) %>% 
+  count() %>% 
+  collect()
+
+vacio_sexo <- unlist(vacio_sexo)
+
+# Fecha nacimiento
+vacio_fecha_nac <- fonasa %>% 
+  filter(is.na(fecha_nacimiento)) %>% 
+  count() %>% 
+  collect()
+
+vacio_fecha_nac <- unlist(vacio_fecha_nac)
+
+# nacionalidad
+vacio_nacionalidad <- fonasa %>% 
+  filter(nacionalidad_cor == "" | nchar(nacionalidad_cor)==0 | is.na(nacionalidad_cor)) %>% 
+  count() %>% 
+  collect()
+
+vacio_nacionalidad <- unlist(vacio_nacionalidad)
+
+#############################
+# Armar tabla de completitud
+#############################
+
+tabla11 <- data.frame(columna = c("run", "nombre", "apellido", "segundo_apellido",
+                                  "sexo","fecha_nacimiento",
+                                  "nacionalidad"),
+                      Frecuencia = c(vacio_run, 
+                                     vacio_nombre, 
+                                     vacio_apellido, 
+                                     vacio_apellido_segundo,
+                                     vacio_sexo,
+                                     vacio_fecha_nac,
+                                     vacio_nacionalidad
+                      )) %>% 
+  mutate(Porcentaje = Frecuencia / nrow(fonasa) * 100,
+         Frecuencia = ifelse(is.na(Frecuencia), 0, Frecuencia),
+         Porcentaje = ifelse(is.na(Porcentaje), 0, Porcentaje),
+         Frecuencia = formatC(Frecuencia, format = "f", big.mark = ".", decimal.mark = ".", digits = 0),
+         Porcentaje = round(Porcentaje, 1),
+         'Tasa de completitud (%)' = round(100-Porcentaje, 1)) %>% 
+  rename(Variable = columna) %>% 
+  kbl()
+
+tabla11
+
+```
+:::
+
+## Indicadores de calidad FONASA
+
+. . .
+
+
+- Tasa de valores atípicos
+
+::: notes
+
+- En este caso la tasa de valores atípicos es cero dado que no existen valores fuera de rango.
+
+:::
+. . .
+
+::: {.incremental .small-par layout="[[1,1], [1,1]]" layout-valign="center"}
+
+![](imagenes/boxplot_edad_cor_fonasa.png)
+
+```{r tabla-12}
+#| warning: FALSE
+
+# Obtener resumen 
+tabla12 <- fonasa %>% 
+  select(edad_cor) %>%
+  summary(edad_cor) %>% 
+  as.data.frame() %>% 
+  select(Freq) %>% 
+  rename('Estadísticas descriptivas de edad_cor'=Freq) %>% 
+  kbl()
+
+tabla12
+
+```
+
+![](imagenes/boxplot_edad_fonasa.png)
+
+```{r tabla-13}
+#| warning: FALSE
+
+# Crear fecha de nacimiento
+data <- fonasa %>% mutate(anio_nacimiento = substring(as.character(fecha_nacimiento), 1, 4)) %>%
+  compute()
+
+# Edad
+data <- data %>%
+  mutate(edad = if_else(!anio_nacimiento %in% c("0", ""), 2023 - as.numeric(anio_nacimiento), 99999)) %>% 
+  filter(edad != 99999) %>% 
+  collect()
+
+# Obtener resumen 
+tabla13<-data %>% 
+  select(edad) %>%
+  summary(edad) %>% 
+  as.data.frame() %>% 
+  select(Freq) %>% 
+  rename('Estadísticas descriptivas de edad'=Freq) %>% 
+  kbl()
+
+tabla13
+
+```
+
+:::
+
+## Indicadores de calidad FONASA
+
+. . .
+
+- Proporción de registros duplicados
+
+. . .
+
+::: {.incremental .medium-par}
+
+No se identifican casos duplicados en el registro de FONASA, lo anterior mantiene coherencia con el procesamiento previo que realiza FONASA para que no existan RUNes duplicados.
+
+:::
+
+## Indicadores de calidad FONASA
+
+. . .
+
+- Validación de RUN 
+
+. . .
+
+::: notes
+
+-  existen 9 mil runes no validos en FONASA con un porcentaje de 0,1%. → Que la tasa sea baja puede deberse a que FONASA le está asignando un RUN válido como identificación provisional → se está indagando con la contraparte
+
+:::
+
+::: {.incremental .medium-par}
+
+```{r tabla-14}
+#| warning: FALSE
+
+rm(fonasa)
+fonasa <- tar_read(validar_run_fonasa)
+fonasa <- read_feather(fonasa, as_data_frame = FALSE)
+
+tabla14 <- fonasa %>% 
+  select(validacion_rut) %>% 
+  group_by(validacion_rut) %>% 
+  summarise(n = n()) %>% 
+  collect() %>% 
+  mutate(Porcentaje = round(n/sum(n)*100,1)) %>% 
+  rename(Frecuencia = n,
+         Validez = validacion_rut) %>% 
+  adorn_totals() %>% 
+  mutate(Frecuencia = formatC(Frecuencia, format = "f", big.mark = ".", decimal.mark = ".", digits = 0),
+         Validez = case_when(Validez == TRUE ~ "Válido",
+                             Validez == FALSE ~ "Inválido",
+                             Validez == "Total" ~ "Total")) %>% 
+  kbl()
+
+tabla14
+```
+
+:::
+
+## Frecuencias brutas SUSESO
+
+. . .
+
+::: {.incremental .medium-par}
+
+- Recopila antecedentes de varios temas, como de los trabajadores protegidos, cotizantes, pensionados y empresas
+
+- En el marco del REP, la tabla más relevante en la exploración es A01: **Trabajadores protegidos**, la que contiene el detalle de los antecedentes generales de todos los trabajadores cubiertos por dicho organismo administrador. 
+
+- Las frecuencias iniciales fueron construidas a partir de información que contiene el sexo y la nacionalidad de las personas trabajadoras, depurando los registros no válidos, como los provenientes de la reforma previsional.
+
+:::
+
+::: notes
+
+- estos registros son roles de prueba desde suseso donde se identifican a personas que tienen asignado el nombre “Creado por reforma previsional”
+
+:::
+
+## Frecuencias brutas SUSESO
+
+. . .
+
+- Según sexo y nacionalidad
+
+
+:::{.incremental .small-par layout="[[1,1]]" layout-valign="center"}
+
+```{r tabla-15}
+#| warning: FALSE
+
+rm(fonasa)
+suseso <- tar_read(suseso)
+suseso <- read_feather(suseso, as_data_frame = FALSE)
+
+tabla15 <- suseso %>% 
+  group_by(Sexo) %>% 
+  summarise(Frecuencia = n()) %>% 
+  collect() %>% 
+  arrange(Sexo) %>% 
+  mutate(Sexo = case_when(Sexo==1 ~ "Hombres",
+                          Sexo==2 ~ "Mujeres",
+                          TRUE ~ "Sin información"),
+         Porcentaje = round(Frecuencia/sum(Frecuencia)*100, 1)) %>% 
+  adorn_totals() %>% 
+  mutate(Frecuencia = formatC(Frecuencia, format = "f", big.mark = ".", digits = 0)) %>% 
+  kbl()
+
+tabla15
+
+```
+
+```{r tabla-16}
+#| warning: FALSE
+
+tabla16 <- suseso %>% 
+  group_by(Nacionalidad) %>% 
+  summarise(Frecuencia = n()) %>% 
+  collect() %>% 
+  arrange(Nacionalidad) %>% 
+  mutate(Nacionalidad = case_when(Nacionalidad==1 ~ "Chilenos",
+                                  Nacionalidad==2 ~ "Extranjeros",
+                                  TRUE ~ "Sin información"),
+         Porcentaje = round(Frecuencia/sum(Frecuencia)*100, 1)) %>% 
+  adorn_totals() %>% 
+  mutate(Frecuencia = formatC(Frecuencia, format = "f", big.mark = ".", digits = 0)) %>% 
+  kbl()
+
+tabla16
+
+```
+
+:::
+
+## Indicadores de calidad SUSESO
+
+. . .
+
+- Tasa de completitud
+
+. . .
+
+::: notes
+
+- podemos ver que solamente la variable Nacionalidad presenta una tasa de completitud menor al 100%. Esto indica que existe una alta integridad en la información recopilada.
+
+:::
+
+::: {.incremental .small-par}
+
+```{r tabla-17}
+#| warning: FALSE
+
+vacio_run <- suseso %>% 
+  filter(is.na(ID_trabajador) | ID_trabajador <= 0 | ID_trabajador == "") %>% 
+  count() %>% 
+  collect()
+
+vacio_run <- unlist(vacio_run)
+
+vacio_sexo <- suseso %>% 
+  group_by(Sexo) %>% 
+  summarise(count = n()) %>% 
+  filter(is.na(Sexo)) %>% 
+  select(count) %>% 
+  collect()
+
+vacio_sexo <- unlist(vacio_sexo)
+
+vacio_nacionalidad <- suseso %>% 
+  group_by(Nacionalidad) %>% 
+  summarise(count = n()) %>% 
+  filter(is.na(Nacionalidad)) %>% 
+  select(count) %>%
+  collect()
+
+vacio_nacionalidad <- unlist(vacio_nacionalidad)
+
+tabla17 <- data.frame(Variable = c("Run", "Sexo", "Nacionalidad"),
+                      Frecuencia = c(vacio_run, vacio_sexo, vacio_nacionalidad
+                      )) %>% 
+  mutate(Frecuencia = ifelse(is.na(Frecuencia), 0, Frecuencia),
+         Porcentaje = Frecuencia / nrow(suseso) * 100,
+         Porcentaje = ifelse(is.na(Porcentaje), 0, Porcentaje),
+         'Tasa de completitud (%)' = round(100-Porcentaje, 1 ),
+         Porcentaje = round(Porcentaje, 1),
+         Frecuencia = formatC(Frecuencia, format = "f", big.mark = ".", decimal.mark = ".", digits = 0)) %>% 
+  kbl()
+
+tabla17
+
+```
+
+:::
+
+## Indicadores de calidad SUSESO
+
+. . .
+
+- Proporción de registros duplicados
+
+. . .
+
+::: {.incremental .medium-par}
+
+Existen **495.180** registros con RUN duplicado, lo cual equivale aproximadamente al 5,6% de los registros. 
+
+En la mayoría de los casos, la duplicidad se genera debido a que un trabajador puede cotizar en más de una empresa, apareciendo varias veces en la base.  
+
+:::
+
+## Indicadores de calidad SUSESO
+
+. . .
+
+- Validación de RUN 
+
+. . .
+
+::: {.incremental .medium-par}
+
+Los resultados muestran que de los 9.953.649 registros, todos tienen un RUN válido.
+
+:::
+
+## Pre-procesamiento SRCeI
+
+::: {.incremental .medium-par}
+
+El pre-procesamiento del Registro Civil consistió en 4 pasos:
+
+1. Remover RUNes inválidos: el porcentaje de RUNes no válidos era de un 2,2%. Al eliminar dichos registros queda una base con 21.568.836 observaciones.
+
+2. Remover RUNes duplicados: existe una baja tasa de RUNes duplicados (0,003%). La deduplicidad se realizó de manera aleatoria, quedando con 21.568.225 registros
+
+3. Editar valores inválidos en la variable edad: se hace un procesamiento a la fecha de nacimiento para luego volver a calcular la edad final, luego se establece un umbral para hacer el corte. Se crea una variable que identifica si la edad es válida tanto para la edad corregida del Registro Civil como la de FONASA, en caso de que la edad no sea válida en el Registro Civil le vamos a creer a FONASA. 
+
+4. Remover outliers de edad: quedamos con un total de 20.856.194 personas.
+
+:::
+
+## Pre-procesamiento SUSESO
+
+::: {.incremental .medium-par}
+
+Como parte del pre-procesamiento de SUSESO se realizan las siguientes depuraciones:
+
+1. Identificar duplicados
+
+2. Remover roles de prueba desde SUSESO
+
+Quedamos con un total de 8.834.007 de registros.
+
+:::
+
+
+::: notes
+
+- La deduplicidad se hizo usando el registro más actualizado
+
+:::
+
+## Pre-procesamiento FONASA
+
+. . .
+
+Dado que no existen duplicados, solamente se hizo una depuración de los runes inválidos
+
+Obtenemos un total 17.524.135 de registros.
+
+. . .
+
+## Integración 
+
+::: {.incremental .medium-par}
+
+- Dentro del contexto del REP, la integración busca vincular información de la misma persona usando diferentes fuentes a través de la comparación de datos y la aplicación de criterios y reglas, que permitirían identificar personas únicas.
+
+- Se utilizó el método determinístico el cual requiere coincidencia exacta en algún identificador, en este caso, sería el RUN.
+
+- Se consideró como base pivote el Registro Civil
+
+- El resultado fue un match parcial, es decir, existen registros dentro de SUSESO y FONASA para los cuales no se encontró un pareo en la tabla pivote del Registro Civil
+
+:::
+
+::: notes
+
+- Buscamos identificar a personas únicas mediante la vinculación de la información de la misma persona mediante diferentes fuentes (en este caso SUSESO y FONASA) 
+
+- La coincidencia se hace mediante un método determinístico usando el RUN de las personas, utilizando como base pivote el RC 
+
+- El resultado fue un match parcial, es decir, existen registros dentro de SUSESO y FONASA para los cuales no se encontró un pareo en la tabla pivote del Registro Civil 
+
+:::
+
+## Integración
+
+::: {.incremental .medium-par}
+
+**Tabla resumen:**
+
+:::
+
+::: notes
+
+- Cerca de 1.2 millones de registros no hicieron.
+
+- Este total de registros serán integrados a la base de RC 
+
+:::
+
+::: {.incremental .medium-par}
+
+```{r tabla-18}
+rm(suseso)
+
+suseso <- tar_read(homologar_cols_suseso_no_match)
+suseso <- read_feather(suseso, as_data_frame = FALSE)
+sin_match_suseso <- nrow(suseso)
+
+rm(suseso)
+
+suseso <- tar_read(homologar_cols_suseso_match)
+suseso <- read_feather(suseso, as_data_frame = FALSE)
+con_match_suseso <- nrow(suseso)
+
+rm(suseso)
+
+fonasa <- tar_read(homologar_cols_fonasa_no_match)
+fonasa <- read_feather(fonasa, as_data_frame = FALSE)
+sin_match_fonasa <- nrow(fonasa)
+
+rm(fonasa)
+
+fonasa <- tar_read(homologar_cols_fonasa_match)
+fonasa <- read_feather(fonasa, as_data_frame = FALSE)
+con_match_fonasa <- nrow(fonasa)
+
+rm(fonasa)
+
+tabla18 <- data.frame(RRAA = c("SUSESO","FONASA"),
+           Match = c(con_match_suseso, con_match_fonasa),
+           Sin_Match = c(sin_match_suseso, sin_match_fonasa)) %>% 
+  mutate(Total = Match+Sin_Match,
+         '% match'= round(Match/Total*100, 1),
+         '% sin match' = round(Sin_Match/Total*100, 1)) %>% 
+  adorn_totals(...=c(Match, Sin_Match, Total)) %>% 
+  mutate(Match = formatC(Match, format = "f", big.mark = ".", digits = 0),
+         Sin_Match = formatC(Sin_Match, format = "f", big.mark = ".", digits = 0),
+         Total = formatC(Total, format = "f", big.mark = ".", digits = 0)) %>% 
+  rename('Sin match' = Sin_Match) %>% 
+  kbl()
+
+tabla18
+
+```
+
+:::
+
+## Conteo final de personas
+
+::: {.incremental .medium-par}
+
+- Se lleva a cabo una última deduplicación dado que existen RUNes duplicados entre SUSESO y FONASA.
+
+- El conteo final para el mes de julio 2023 alcanza a **22.104.971** personas.
+
+- Este total **no excluye a quienes no son residentes activos**. Dicha condición se revisará durante 2024
+
+- Según sexo, observamos que la proporción de mujeres es levemente mayor a la de hombres.
+
+:::
+
+::: notes
+
+- Criterio principal para ser residente activo son las "señales de vida"
+- Mencionar que el dato de la proporción levemente mayor de mujeres fue corroborada por las proyecciones de población del Subdepartamento de Demografía y Estadísticas Vitales
+
+:::
+
+::: {.incremental .medium-par}
+
+```{r tabla-19}
+
+rc <- tar_read(deduplicar_dataset_combinado)
+rc <- read_feather(rc, as_data_frame = FALSE)
+
+rc %>% mutate(sexo_num = ifelse(sexo_num==4, 99, sexo_num)) %>% 
+  group_by(sexo_num) %>% 
+  summarise(Frecuencia = n()) %>% 
+  collect() %>% 
+  arrange(sexo_num) %>% 
+  mutate(Porcentaje = round(Frecuencia/sum(Frecuencia)*100, 1),
+         sexo_num = case_when(sexo_num==1 ~ "Hombres",
+                              sexo_num==2 ~ "Mujeres",
+                              sexo_num==3 ~ "Indeterminado",
+                              sexo_num==99 ~ "Sin información")) %>% 
+  adorn_totals() %>% 
+  mutate(Frecuencia = formatC(Frecuencia, format = "f", big.mark = ".", digits = 0)) %>% 
+  rename(Sexo = sexo_num) %>% 
+  kbl()
+
+```
+
+:::
+
+
+## Conteo final de personas
+
+::: {.incremental .medium-par}
+
+- Según nacionalidad, los extranjeros suman alrededor de 2.9 millones de personas, representando al 13,2% del total.
+
+- La estimación oficial de población extranjera del INE y Sermig para diciembre 2022 alcanzó 1.625.074 personas
+
+:::
+
+::: notes
+
+- Mencionar que esto puede deberse a la condición de residente activo porque pueden existir registros de extranjeros que volvieron a su país
+
+:::
+
+```{r tabla-20}
+
+tabla20 <- rc %>% 
+  group_by(nacionalidad_num) %>% 
+  summarise(Frecuencia = n()) %>% 
+  collect() %>% 
+  arrange(nacionalidad_num) %>% 
+  mutate(Porcentaje = round(Frecuencia/sum(Frecuencia)*100, 1),
+         nacionalidad_num = case_when(nacionalidad_num==1 ~ "Chilenos",
+                              nacionalidad_num==2 ~ "Nacionalizados",
+                              nacionalidad_num==3 ~ "Extranjeros",
+                              nacionalidad_num==99 ~ "Sin información")) %>% 
+  adorn_totals() %>% 
+  mutate(Frecuencia = formatC(Frecuencia, format = "f", big.mark = ".", digits = 0)) %>% 
+  rename(Nacionalidad = nacionalidad_num) %>% 
+  kbl()
+
+tabla20
+
+```
+
+
+## Conteo final de personas
+
+::: {.incremental .small-par}
+
+- Ya no existen outliers
+- Según edad, al igual que en las frecuencias brutas, el grupo etario de 30 a 39 tiene la mayor representación.
+- Alto porcentaje de personas sin información en la variable edad (4,9%)
+
+:::
+
+::: notes
+
+- "Sin información" provienen en su mayoría de observaciones en SUSESO que no hicieron match y luego fueron incorporados al unir filas con RC
+
+:::
+
+::: {.incremental .small-par}
+
+```{r tabla-21}
+
+tabla21 <- rc %>%
+  mutate(edad_agrupada = case_when(edad_final %in% 0:9 ~ "0 a 9",
+                                   edad_final %in% 10:19 ~ "10 a 19",
+                                   edad_final %in% 20:29 ~ "20 a 29",
+                                   edad_final %in% 30:39 ~ "30 a 39",
+                                   edad_final %in% 40:49 ~ "40 a 49",
+                                   edad_final %in% 50:59 ~ "50 a 59",
+                                   edad_final %in% 60:69 ~ "60 a 69",
+                                   edad_final %in% 70:79 ~ "70 a 79",
+                                   edad_final %in% 80:89 ~ "80 a 89",
+                                   edad_final %in% 90:99 ~ "90 a 99",
+                                   edad_final %in% 100:110 ~ "100 a 110",
+                                   edad_final == 99999 ~ "Sin información",
+                                   TRUE ~ ">110"),
+         edad_num = case_when(edad_final %in% 0:9 ~ 1,
+                              edad_final %in% 10:19 ~ 2,
+                              edad_final %in% 20:29 ~ 3,
+                              edad_final %in% 30:39 ~ 4,
+                              edad_final %in% 40:49 ~ 5,
+                              edad_final %in% 50:59 ~ 6,
+                              edad_final %in% 60:69 ~ 7,
+                              edad_final %in% 70:79 ~ 8,
+                              edad_final %in% 80:89 ~ 9,
+                              edad_final %in% 90:99 ~ 10,
+                              edad_final %in% 100:110 ~ 11,
+                              edad_final == 99999 ~ 12,
+                              TRUE ~ 13)) %>%
+  group_by(edad_agrupada, edad_num) %>%
+  summarise(n = n()) %>%
+  collect() %>% 
+  ungroup() %>% 
+  mutate(Porcentaje = round(n/sum(n)*100,1)) %>% 
+  adorn_totals("row") %>% 
+  mutate(Frecuencia = formatC(n, format = "f", big.mark = ".", decimal.mark = ".", digits = 0)) %>% 
+  arrange(edad_num) %>% 
+  select(-edad_num) %>% 
+  rename(Edad = edad_agrupada,
+         'Porcentaje (%)' = Porcentaje) %>% 
+  select(Edad, Frecuencia, 'Porcentaje (%)') %>% 
+  kbl()
+
+tabla21
+
+```
+:::
+
+
+## Consideraciones finales
+
+::: {.incremental .medium-par}
+
+- Se observa que los resultados respecto a la nacionalidad no mantienen coherencia con el Serming. 
+
+- Para el 2024 resaltan al menos cuatro líneas de trabajo: 
+
+  - Perfeccionar la identificación de a quienes sumar y a quienes restar (por ejemplo identificación de residentes (activos e inactivos) usando señales de vida). 
+  
+  - Desarrollo y pruebas de integración propabilística manteniendo los espacios de cooperación internacional y nacional (uso de SPLINK con apoyo de Reino Unido).
+  
+  - Profundizar la desagregación geográfica a nivel comuna.
+  
+  - Gestionar el acceso mediante convenios a un mayor número de registros administrativos priorizados, al menos Servel, Superintendencia de Salud y Educación. Tomando en cuenta la importancia de mantener contacto con los proveedores. 
+  
+   - Continuar avanzando en la definición de procesos, evaluación de calidad de los insumos y procesos. A la par de estudiar la coherencia con otras fuentes de información. 
+  
+:::
+#
+
+<!---
+# TODO: this does not work
+.linea-superior[]
+.linea-inferior[] 
+--->
+
+<!---
+# TODO: this does not work
+![](imagenes/logo_portada2.png){.center style="width: 20%;"}   
+--->
+
+<img src="imagenes/logo_portada2.png" width="20%"/>  
+
+[**Mesa de Procesamiento**]{.big-par .center-justified}
+
+[**Proyecto Estratégico Registro Estadístico de Población (REP)**]{.big-par .center-justified}
+
+[**Resultados Preliminares**]{.big-par .center-justified}
+
+[**Febrero 2024**]{.big-par .center-justified}
+
+
+[]{.linea-superior} 
+[]{.linea-inferior} 
