@@ -1507,9 +1507,27 @@ tabla21
 
 ::: {.incremental .medium-par}
 
-- Se observa que los resultados respecto a la nacionalidad no mantienen coherencia con el Serming. 
+- Se observa que los resultados respecto a la nacionalidad no mantienen coherencia con los del SERMIG.
 
-- Para el 2024 resaltan al menos cuatro líneas de trabajo: 
+- Con respecto a SUSESO, se observan coherencias respecto a la composición de las tasas de participación según sexo (mayoría hombres) y nacionalidad (mayoría chilenos).
+
+- El total de personas integradas a través del RUN da cuenta de 22.104.971 personas. Según las proyecciones de población del INE al 2023 la población alcanza 19.960.889 personas, por lo que estaríamos sobreestimando al total de la población según estas proyecciones.
+
+- Según sexo, se observa que las mujeres tienen una mayor representatividad (50,3%) en comparación a los hombres (49,7%). Esta composición es coherente según las proyecciones del INE, donde las mujeres representan al 50,7% y los hombres al 49,3%
+
+:::
+
+::: notes
+
+- También comparamos los resultados finales con las proyecciones de población del Subdepartamento de Demografía y Estadísticas Vitales donde ellos estiman un total de 19.960.889 personas al 2023, es decir, según estas proyecciones estaríamos sobreestimando al total nacional.
+
+:::
+
+## Consideraciones finales
+
+::: {.incremental .medium-par}
+
+- Para el 2024 resaltan al menos cinco líneas de trabajo: 
 
   - Perfeccionar la identificación de a quienes sumar y a quienes restar (por ejemplo identificación de residentes (activos e inactivos) usando señales de vida). 
   
@@ -1517,9 +1535,9 @@ tabla21
   
   - Profundizar la desagregación geográfica a nivel comuna.
   
-  - Gestionar el acceso mediante convenios a un mayor número de registros administrativos priorizados, al menos Servel, Superintendencia de Salud y Educación. Tomando en cuenta la importancia de mantener contacto con los proveedores. 
+  - Gestionar el acceso mediante convenios a un mayor número de registros administrativos priorizados, al menos Servel, Superintendencia de Salud y Educación, tomando en cuenta la importancia de mantener contacto con los proveedores. 
   
-   - Continuar avanzando en la definición de procesos, evaluación de calidad de los insumos y procesos. A la par de estudiar la coherencia con otras fuentes de información. 
+   - Continuar avanzando en la definición de procesos y evaluación de calidad de los insumos, a la par de estudiar la coherencia con otras fuentes de información. 
   
 :::
 #
