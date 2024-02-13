@@ -1507,13 +1507,14 @@ tabla21
 
 ::: {.incremental .medium-par}
 
-- Se observa que los resultados respecto a la nacionalidad no mantienen coherencia con los del SERMIG.
+- El total de personas integradas a través del RUN da cuenta de 22.104.971 personas. Según las proyecciones de población del INE al 2023 la población alcanza 19.960.889 personas, por lo que estaríamos sobreestimando al total de la población según estas proyecciones. 
 
-- Con respecto a SUSESO, se observan coherencias respecto a la composición de las tasas de participación según sexo (mayoría hombres) y nacionalidad (mayoría chilenos).
+- Según sexo, se observa que las mujeres tienen una mayor representatividad (50,3%) en comparación a los hombres (49,7%). Esta composición es coherente según las proyecciones del INE, donde las mujeres representan al 50,7% y los hombres al 49,3%. 
 
-- El total de personas integradas a través del RUN da cuenta de 22.104.971 personas. Según las proyecciones de población del INE al 2023 la población alcanza 19.960.889 personas, por lo que estaríamos sobreestimando al total de la población según estas proyecciones.
+- Se observa que los resultados respecto a la nacionalidad no mantienen coherencia con los del SERMIG. 
 
-- Según sexo, se observa que las mujeres tienen una mayor representatividad (50,3%) en comparación a los hombres (49,7%). Esta composición es coherente según las proyecciones del INE, donde las mujeres representan al 50,7% y los hombres al 49,3%
+- Con respecto a SUSESO, se observan coherencias respecto a la composición de las tasas de participación según sexo (mayoría hombres) y nacionalidad (mayoría chilenos). 
+
 
 :::
 
